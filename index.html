@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1D Elementary Cellular Automaton</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background:#030712; color:#f1f5f9; }
+  #ca-canvas { display:block; image-rendering: pixelated; border:1px solid #1f2937; }
+  #rule-canvas { display:block; }
+</style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-4">
+
+<h1 class="text-2xl font-bold text-emerald-400 mt-3 mb-1">1D Elementary Cellular Automaton</h1>
+<p class="text-gray-400 text-xs mb-4">Wolfram's Rule 0–255 · 200+ generations from seed</p>
+
+<!-- Controls -->
+<div class="flex flex-wrap gap-3 justify-center items-center mb-3">
+  <div class="flex items-center gap-2">
+    <label for="rule-input" class="text-sm text-gray-400 font-semibold">Rule #</label>
+    <input id="rule-input" type="number" min="0" max="255" value="30"
+      class="w-20 px-2 py-1 bg-gray-800 border border-gray-600 rounded-lg text-center font-bold text-emerald-400 focus:outline-none focus:border-emerald-500"
+      aria-label="Rule number 0 to 255" oninput="onRuleInput(this.value)">
+  </div>
+  <div class="flex items-center gap-2">
+    <label for="init-select" class="text-sm text-gray-400">Init</label>
+    <select id="init-select" onchange="generate()" aria-label="Initial state"
+      class="px-2 py-1 bg-gray-800 border border-gray-600 rounded-lg text-sm text-gray-200 focus:outline-none">
+      <option value="center">Single center cell</option>
+      <option value="random">Random</option>
+    </select>
+  </div>
+  <button onclick="generate()" class="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded-lg font-semibold text-sm transition">Generate</button>
+  <button onclick="downloadPNG()" class="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg font-semibold text-sm transition">⬇ PNG</button>
+</div>
+
+<!-- Preset buttons -->
+<div class="flex gap-2 mb-4 flex-wrap justify-center text-sm">
+  <span class="text-gray-500 self-center text-xs">Presets:</span>
+  <button onclick="setRule(30)" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded-lg transition text-xs">Rule 30 (Chaos)</button>
+  <button onclick="setRule(90)" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded-lg transition text-xs">Rule 90 (Sierpiński)</button>
+  <button onclick="setRule(110)" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded-lg transition text-xs">Rule 110 (Universal)</button>
+  <button onclick="setRule(184)" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded-lg transition text-xs">Rule 184 (Traffic)</button>
+  <button onclick="setRule(45)" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded-lg transition text-xs">Rule 45</button>
+  <button onclick="setRule(73)" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded-lg transition text-xs">Rule 73</button>
+</div>
+
+<!-- Rule display -->
+<div class="mb-4 bg-gray-900 rounded-xl p-3 flex flex-col items-center">
+  <p class="text-xs text-gray-400 font-semibold mb-2">Rule <span id="rule-display-num" class="text-emerald-400">30</span> = <span id="rule-binary" class="font-mono text-yellow-400">00011110</span></p>
+  <canvas id="rule-canvas" width="288" height="60" aria-label="Rule pattern display"></canvas>
+</div>
+
+<!-- Main canvas -->
+<canvas id="ca-canvas" width="640" height="400" aria-label="Cellular automaton evolution"></canvas>
+
+<script>
+const caCanvas = document.getElementById('ca-canvas');
+const caCtx = caCanvas.getContext('2d');
+const ruleCanvas = document.getElementById('rule-canvas');
+const ruleCtx = ruleCanvas.getContext('2d');
+
+const W = 640, H = 400;
+const COLS = 320, ROWS = 200;
+const CELL_W = W/COLS, CELL_H = H/ROWS;
+
+let rule = 30;
+
+function ruleOutput(rule, left, center, right) {
+  const idx = (left << 2) | (center << 1) | right;
+  return (rule >> idx) & 1;
+}
+
+function generate() {
+  rule = parseInt(document.getElementById('rule-input').value);
+  if (isNaN(rule) || rule < 0 || rule > 255) return;
+
+  const init = document.getElementById('init-select').value;
+  let row = new Uint8Array(COLS);
+  if (init === 'center') {
+    row[Math.floor(COLS/2)] = 1;
+  } else {
+    for (let i=0;i<COLS;i++) row[i] = Math.random() < 0.5 ? 1 : 0;
+  }
+
+  // Draw
+  caCtx.fillStyle = '#030712';
+  caCtx.fillRect(0,0,W,H);
+
+  for (let r=0; r<ROWS; r++) {
+    for (let c=0; c<COLS; c++) {
+      if (row[c]) {
+        caCtx.fillStyle = '#ffffff';
+        caCtx.fillRect(c*CELL_W, r*CELL_H, CELL_W, CELL_H);
+      }
+    }
+    // Next row
+    const next = new Uint8Array(COLS);
+    for (let c=0; c<COLS; c++) {
+      const l = row[(c-1+COLS)%COLS];
+      const m = row[c];
+      const ri = row[(c+1)%COLS];
+      next[c] = ruleOutput(rule, l, m, ri);
+    }
+    row = next;
+  }
+
+  drawRuleDisplay(rule);
+  updateRuleLabels(rule);
+}
+
+function drawRuleDisplay(r) {
+  ruleCtx.fillStyle = '#111827';
+  ruleCtx.fillRect(0,0,288,60);
+  const patterns = [[1,1,1],[1,1,0],[1,0,1],[1,0,0],[0,1,1],[0,1,0],[0,0,1],[0,0,0]];
+  const cellSz = 14;
+  patterns.forEach((pat, i) => {
+    const x = i * 36 + 4;
+    // Draw 3 parent cells
+    pat.forEach((v, j) => {
+      ruleCtx.fillStyle = v ? '#10b981' : '#1f2937';
+      ruleCtx.fillRect(x + j*cellSz, 4, cellSz-1, cellSz-1);
+    });
+    // Draw output cell
+    const out = (r >> (7-i)) & 1;
+    ruleCtx.fillStyle = out ? '#ffffff' : '#1f2937';
+    ruleCtx.fillRect(x + cellSz, 22, cellSz-1, cellSz-1);
+    // Border
+    ruleCtx.strokeStyle = '#374151';
+    ruleCtx.lineWidth = 1;
+    ruleCtx.strokeRect(x + cellSz, 22, cellSz-1, cellSz-1);
+    // Label
+    ruleCtx.fillStyle = out ? '#10b981' : '#6b7280';
+    ruleCtx.font = '9px monospace';
+    ruleCtx.textAlign = 'center';
+    ruleCtx.fillText(String(7-i), x + cellSz + (cellSz-1)/2, 52);
+  });
+}
+
+function updateRuleLabels(r) {
+  document.getElementById('rule-display-num').textContent = r;
+  document.getElementById('rule-binary').textContent = r.toString(2).padStart(8,'0');
+}
+
+function setRule(r) {
+  rule = r;
+  document.getElementById('rule-input').value = r;
+  generate();
+}
+
+function onRuleInput(val) {
+  const n = parseInt(val);
+  if (!isNaN(n) && n>=0 && n<=255) generate();
+}
+
+function downloadPNG() {
+  const link = document.createElement('a');
+  link.download = `rule-${rule}.png`;
+  link.href = caCanvas.toDataURL();
+  link.click();
+}
+
+// Init
+generate();
+</script>
+</body>
+</html>
